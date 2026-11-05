@@ -7,4 +7,15 @@ export default defineConfig({
   nitro: {
     preset: process.env['VERCEL'] ? 'vercel' : 'cloudflare-module',
   },
+  vite: {
+    build: {
+      rollupOptions: {
+        external: [
+          'firebase-admin',
+          '@google-cloud/firestore',
+          'google-gax',
+        ],
+      },
+    },
+  },
 });
