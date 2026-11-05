@@ -8,10 +8,15 @@ import { head, money } from '@/lib/pizza';
 import { toast } from 'sonner';
 export const Route = createFileRoute('/_authenticated/assinatura')({ head: () => head('Assinatura da loja', 'Mensalidade, vencimento e licença do estabelecimento na FH Foods.'), component: Billing });
 const labels = { demonstration: 'Demonstração · sem cobrança', active: 'Ativa', grace: 'Pagamento em atraso · período de tolerância', blocked: 'Operação suspensa' };
+type LicenseRow = { mode: 'demonstration' | 'active' | 'suspended'; monthly_price: number; due_at: string | null; updated_at: string };
+type LicenseStatus = { state: keyof typeof labels; blocksAt: string | null };
+type InvoiceRow = { id: string; due_at: string | null; amount: number; state: string };
+type AuditRow = { id: string; created_at: string; reason: string };
+type BillingData = { license: LicenseRow; status: LicenseStatus; invoices: InvoiceRow[]; audit: AuditRow[]; operator: boolean };
 const date = (value: string | null) => value ? new Date(value).toLocaleString('pt-BR') : 'Não definido';
 function Billing() {
   const fetchBilling = useServerFn(getBilling), save = useServerFn(configureLicense), client = useQueryClient();
-  const query = useQuery({ queryKey: ['billing'], queryFn: () => fetchBilling(), refetchInterval: 30000, retry: false });
+  const query = useQuery<BillingData>({ queryKey: ['billing'], queryFn: () => fetchBilling() as unknown as Promise<BillingData>, refetchInterval: 30000, retry: false });
   const mutation = useMutation({ mutationFn: save, onSuccess: async () => { await client.invalidateQueries(); toast.success('Licença atualizada'); }, onError: e => toast.error(e.message) });
   const data = query.data;
   return <main className="page-body"><span className="wordmark">FH FOODS</span><div className="flex flex-wrap gap-3 mt-6"><Button asChild variant="ghost"><Link to="/gestao"><ArrowLeft/>Gestão</Link></Button><Button asChild variant="ghost"><Link to="/auth">Acesso da equipe</Link></Button></div><h1 className="page-title mt-6">Assinatura da loja</h1>{query.isPending ? <p>Consultando assinatura…</p> : query.error ? <p role="alert">{query.error.message}</p> : data && <>
