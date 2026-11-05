@@ -1,27 +1,166 @@
-import {licensedOperation} from './license-middleware';
-import {createServerFn} from '@tanstack/react-start';
-import {createClient} from '@supabase/supabase-js';
-import {requireSupabaseAuth} from '@/integrations/supabase/auth-middleware';
-import type {Database} from '@/integrations/supabase/types';
-import {z} from 'zod';
-import {demandEstimate,platformFee,serviceReviewSchema} from './pizza';
-
-function publicDb(){const key=process.env['SUPABASE_PUBLISHABLE_KEY'],url=process.env['SUPABASE_URL'];if(!key||!url)throw new Error('Serviço indisponível');return createClient<Database>(url,key,{auth:{persistSession:false,autoRefreshToken:false},global:{fetch:(input,init)=>{const h=new Headers(init?.headers);if(h.get('Authorization')===`Bearer ${key}`)h.delete('Authorization');h.set('apikey',key);return fetch(input,{...init,headers:h});}}});}
+import { licensedOperation } from './license-middleware';
+import { createServerFn } from '@tanstack/react-start';
+import { requireSupabaseAuth } from '@/integrations/supabase/auth-middleware';
+import { z } from 'zod';
+import { demandEstimate, platformFee, serviceReviewSchema } from './pizza';
 async function director(context:{supabase:any;userId:string}){const {data,error}=await context.supabase.rpc('has_role',{_user_id:context.userId,_role:'admin'});if(error||!data)throw new Error('Acesso exclusivo da direção');}
-export const getOperations=createServerFn({method:'GET'}).middleware([licensedOperation]).handler(async()=>{const db=publicDb();const [settings,zones,plans,queue]=await Promise.all([db.from('store_settings').select('*').eq('id',1).single(),db.from('delivery_zones').select('*').eq('active',true).order('name'),db.from('club_plans').select('*').eq('active',true).order('monthly_price'),db.rpc('demand_count')]);if(settings.error||zones.error||plans.error||queue.error||!settings.data)throw new Error('Não foi possível consultar a operação');return {settings:settings.data,zones:zones.data??[],plans:settings.data.club_enabled?plans.data??[]:[],wait:demandEstimate(queue.data??0,settings.data.demand_mode)};});
-export const getOperationsAdmin=createServerFn({method:'GET'}).middleware([requireSupabaseAuth,licensedOperation]).handler(async({context})=>{await director(context);const [settings,zones,plans,members,reviews,jobs,contract,operator,orders,serviceReviews,sessions]=await Promise.all([context.supabase.from('store_settings').select('*').eq('id',1).single(),context.supabase.from('delivery_zones').select('*').order('name'),context.supabase.from('club_plans').select('*').order('monthly_price'),context.supabase.from('club_members').select('id,user_id,phone,plan_id,status,monthly_price,credits,period_start,period_end,is_demo,created_at').order('created_at',{ascending:false}),context.supabase.from('order_reviews').select('*').order('created_at',{ascending:false}).limit(1000),context.supabase.from('print_jobs').select('*').order('created_at',{ascending:false}).limit(100),context.supabase.from('club_contract').select('*').eq('id',1).single(),context.supabase.from('platform_operators').select('user_id').eq('user_id',context.userId).maybeSingle(),context.supabase.from('orders').select('id,number,items,customer_name').order('created_at',{ascending:false}).limit(1000),context.supabase.from('service_reviews').select('*').order('created_at',{ascending:false}).limit(1000),context.supabase.from('dining_sessions').select('id,label').order('started_at',{ascending:false}).limit(1000)]);for(const r of [settings,zones,plans,members,reviews,jobs,contract,operator,orders,serviceReviews,sessions])if(r.error)throw new Error('Não foi possível carregar a operação');const active=(members.data??[]).filter(m=>m.status==='active'&&new Date(m.period_end)>new Date());const paid=active.filter(m=>!m.is_demo);return {settings:settings.data,zones:zones.data??[],plans:plans.data??[],members:members.data??[],reviews:reviews.data??[],serviceReviews:serviceReviews.data??[],sessions:sessions.data??[],jobs:jobs.data??[],orders:orders.data??[],contract:contract.data,operator:!!operator.data,mrr:paid.reduce((n,m)=>n+Number(m.monthly_price),0),fee:contract.data?.agreed?platformFee(paid.map(m=>Number(m.monthly_price)),contract.data.billing_mode,Number(contract.data.percentage),Number(contract.data.monthly_fee)):0};});
-export const saveOperations=createServerFn({method:'POST'}).middleware([requireSupabaseAuth,licensedOperation]).inputValidator(input=>z.object({scheduling_enabled:z.boolean(),delivery_zones_enabled:z.boolean(),free_delivery_minimum:z.number().min(0).max(100000),demand_mode:z.enum(['auto','normal','busy','overload']),club_enabled:z.boolean(),auto_print_enabled:z.boolean(),paper_width:z.union([z.literal(58),z.literal(80)])}).parse(input)).handler(async({data,context})=>{await director(context);const r=await context.supabase.from('store_settings').update(data).eq('id',1);if(r.error)throw new Error('Não foi possível salvar');return true;});
-export const saveZone=createServerFn({method:'POST'}).middleware([requireSupabaseAuth,licensedOperation]).inputValidator(input=>z.object({id:z.string().uuid().optional(),name:z.string().trim().min(2).max(80),fee:z.number().min(0).max(1000),active:z.boolean()}).parse(input)).handler(async({data,context})=>{await director(context);const {id,...values}=data;const r=await context.supabase.from('delivery_zones').upsert({...values,...(id?{id}:{})});if(r.error)throw new Error('Não foi possível salvar o bairro');return true;});
-export const savePlan=createServerFn({method:'POST'}).middleware([requireSupabaseAuth,licensedOperation]).inputValidator(input=>z.object({id:z.string().uuid().optional(),name:z.string().trim().min(2).max(80),monthly_price:z.number().positive().max(10000),pizza_quota:z.number().int().min(1).max(30),eligible_product_ids:z.array(z.string().uuid()).min(1).max(100),free_delivery:z.boolean(),priority:z.boolean(),active:z.boolean()}).parse(input)).handler(async({data,context})=>{await director(context);const {id,...values}=data;const r=await context.supabase.from('club_plans').upsert({...values,...(id?{id}:{})});if(r.error)throw new Error('Não foi possível salvar o plano');return true;});
-export const saveContract=createServerFn({method:'POST'}).middleware([requireSupabaseAuth,licensedOperation]).inputValidator(input=>z.object({billing_mode:z.enum(['per_subscriber','monthly']),percentage:z.number().min(0).max(100),monthly_fee:z.number().min(0).max(100000),agreed:z.boolean()}).parse(input)).handler(async({data,context})=>{const r=await context.supabase.from('platform_operators').select('user_id').eq('user_id',context.userId).maybeSingle();if(r.error||!r.data)throw new Error('Somente a FH Foods pode negociar este contrato');const {supabaseAdmin}=await import('@/integrations/supabase/client.server');const saved=await supabaseAdmin.from('club_contract').upsert({id:1,...data});if(saved.error)throw new Error('Não foi possível salvar o contrato');return true;});
-export const cancelMember=createServerFn({method:'POST'}).middleware([requireSupabaseAuth,licensedOperation]).inputValidator(input=>z.object({id:z.string().uuid()}).parse(input)).handler(async({data,context})=>{await director(context);const {supabaseAdmin}=await import('@/integrations/supabase/client.server');const r=await supabaseAdmin.from('club_members').update({status:'cancelled'}).eq('id',data.id);if(r.error)throw new Error('Não foi possível cancelar');return true;});
-export const myClub=createServerFn({method:'GET'}).middleware([requireSupabaseAuth,licensedOperation]).handler(async({context})=>{const r=await context.supabase.from('club_members').select('*').eq('user_id',context.userId).eq('status','active').gt('period_end',new Date().toISOString()).maybeSingle();if(r.error)throw new Error('Não foi possível consultar o clube');return r.data;});
-export const enrollDemoClub=createServerFn({method:'POST'}).middleware([requireSupabaseAuth,licensedOperation]).inputValidator(input=>z.object({planId:z.string().uuid(),phone:z.string().regex(/^\d{10,11}$/)}).parse(input)).handler(async({context,data})=>{const db=publicDb();const [st,p]=await Promise.all([db.from('store_settings').select('club_enabled,demo_mode').eq('id',1).single(),db.from('club_plans').select('*').eq('id',data.planId).eq('active',true).single()]);if(!st.data?.club_enabled||!st.data.demo_mode||!p.data)throw new Error('Adesão disponível apenas em demonstração; cobrança real ainda não conectada');const {supabaseAdmin}=await import('@/integrations/supabase/client.server');const expired=await supabaseAdmin.from('club_members').update({status:'cancelled'}).eq('user_id',context.userId).eq('status','active').lte('period_end',new Date().toISOString());if(expired.error)throw new Error('Não foi possível atualizar o período');const r=await supabaseAdmin.from('club_members').insert({user_id:context.userId,plan_id:p.data.id,phone:data.phone,monthly_price:p.data.monthly_price,credits:p.data.pizza_quota,is_demo:true}).select('*').single();if(r.error)throw new Error('Já existe uma adesão ativa ou não foi possível aderir');return r.data;});
-export const reviewOrder=createServerFn({method:'POST'}).middleware([licensedOperation]).inputValidator(input=>z.object({orderId:z.string().uuid(),token:z.string().uuid(),dough:z.number().int().min(1).max(5),temperature:z.number().int().min(1).max(5),flavor:z.number().int().min(1).max(5),message:z.string().trim().max(1000)}).parse(input)).handler(async({data})=>{const {supabaseAdmin}=await import('@/integrations/supabase/client.server');const r=await supabaseAdmin.rpc('submit_review',{_order:data.orderId,_token:data.token,_dough:data.dough,_temperature:data.temperature,_flavor:data.flavor,_message:data.message});if(r.error)throw new Error('Avaliação já enviada ou pedido ainda não entregue');return true;});
-export const reviewState=createServerFn({method:'GET'}).middleware([licensedOperation]).inputValidator(input=>z.object({orderId:z.string().uuid(),token:z.string().uuid()}).parse(input)).handler(async({data})=>{const {supabaseAdmin}=await import('@/integrations/supabase/client.server');const r=await supabaseAdmin.rpc('private_review_state',{_order:data.orderId,_token:data.token});if(r.error)throw new Error('Não foi possível consultar a avaliação');const row=r.data?.[0];return row?{reviewed:row.reviewed,scheduledAt:row.scheduled_at}:null;});
-export const claimPrint=createServerFn({method:'POST'}).middleware([requireSupabaseAuth,licensedOperation]).inputValidator(input=>z.object({device:z.string().uuid()}).parse(input)).handler(async({context,data})=>{const r=await context.supabase.rpc('claim_print',{_device:data.device});if(r.error)throw new Error('Não foi possível obter a impressão');const job=r.data?.[0];if(!job)return null;const [order,st]=await Promise.all([context.supabase.from('orders').select('number,customer_name,address,delivery_method,items,scheduled_at,table_id').eq('id',job.order_id).single(),context.supabase.from('store_settings').select('paper_width,establishment_name').eq('id',1).single()]);if(order.error||!order.data){await context.supabase.rpc('finish_print',{_job:job.id,_device:data.device,_success:false});throw new Error('Comanda indisponível');}return {job,order:order.data,width:st.data?.paper_width??80,name:st.data?.establishment_name??'FH Foods'};});
-export const finishPrint=createServerFn({method:'POST'}).middleware([requireSupabaseAuth,licensedOperation]).inputValidator(input=>z.object({job:z.string().uuid(),device:z.string().uuid(),success:z.boolean()}).parse(input)).handler(async({data,context})=>{const r=await context.supabase.rpc('finish_print',{_job:data.job,_device:data.device,_success:data.success});if(r.error||!r.data)throw new Error('Não foi possível confirmar o envio');return true;});
-export const requeuePrint=createServerFn({method:'POST'}).middleware([requireSupabaseAuth,licensedOperation]).inputValidator(input=>z.object({job:z.string().uuid()}).parse(input)).handler(async({data,context})=>{await director(context);const r=await context.supabase.rpc('requeue_print',{_job:data.job});if(r.error||!r.data)throw new Error('Aguarde cinco minutos ou confira o estado da impressão');return true;});
+export const getOperations = createServerFn({ method: 'GET' }).middleware([licensedOperation]).handler(async () => {
+  const { getDb } = await import('@/lib/firebase-admin');
+  const db = getDb();
+  const [settingsSnap, zonesSnap, activeOrdersSnap] = await Promise.all([
+    db.collection('store_settings').doc('main').get(),
+    db.collection('delivery_zones').where('active', '==', true).orderBy('name').get(),
+    db.collection('orders').where('status', 'in', ['recebido', 'preparando']).get(),
+  ]);
+  const settings = settingsSnap.data();
+  if (!settings) throw new Error('Não foi possível consultar a operação');
+  const queueCount = activeOrdersSnap.size;
+  return {
+    settings,
+    zones: zonesSnap.docs.map(d => ({ id: d.id, ...d.data() })),
+    plans: [],
+    wait: demandEstimate(queueCount, settings['demand_mode']),
+  };
+});
+export const getOperationsAdmin = createServerFn({ method: 'GET' }).middleware([requireSupabaseAuth, licensedOperation]).handler(async ({ context }) => {
+  await director(context);
+  const { getDb } = await import('@/lib/firebase-admin');
+  const db = getDb();
+  const [settingsSnap, zonesSnap, ordersSnap, serviceReviewsSnap, sessionsSnap] = await Promise.all([
+    db.collection('store_settings').doc('main').get(),
+    db.collection('delivery_zones').orderBy('name').get(),
+    db.collection('orders').orderBy('created_at', 'desc').limit(1000).get(),
+    db.collection('service_reviews').orderBy('created_at', 'desc').limit(1000).get(),
+    db.collection('dining_sessions').orderBy('started_at', 'desc').limit(1000).get(),
+  ]);
+  return {
+    settings: settingsSnap.data(),
+    zones: zonesSnap.docs.map(d => ({ id: d.id, ...d.data() })),
+    plans: [],
+    members: [],
+    reviews: [],
+    serviceReviews: serviceReviewsSnap.docs.map(d => ({ id: d.id, ...d.data() })),
+    sessions: sessionsSnap.docs.map(d => ({ id: d.id, ...d.data() })),
+    jobs: [],
+    orders: ordersSnap.docs.map(d => ({ id: d.id, ...d.data() })),
+    contract: null,
+    operator: false,
+    mrr: 0,
+    fee: 0,
+  };
+});
+export const saveOperations = createServerFn({ method: 'POST' }).middleware([requireSupabaseAuth, licensedOperation])
+  .inputValidator(input => z.object({ scheduling_enabled: z.boolean(), delivery_zones_enabled: z.boolean(), free_delivery_minimum: z.number().min(0).max(100000), demand_mode: z.enum(['auto', 'normal', 'busy', 'overload']), club_enabled: z.boolean(), auto_print_enabled: z.boolean(), paper_width: z.union([z.literal(58), z.literal(80)]) }).parse(input))
+  .handler(async ({ data, context }) => {
+    await director(context);
+    const { getDb } = await import('@/lib/firebase-admin');
+    const db = getDb();
+    await db.collection('store_settings').doc('main').update(data);
+    return true;
+  });
 
-export const reviewService=createServerFn({method:'POST'}).middleware([licensedOperation]).inputValidator(input=>serviceReviewSchema.parse(input)).handler(async({data})=>{const {supabaseAdmin}=await import('@/integrations/supabase/client.server');const r=await supabaseAdmin.rpc('submit_service_review',{_order:data.orderId,_token:data.token,_courtesy:data.courtesy,_speed:data.speed,_experience:data.experience,_message:data.message});if(r.error)throw new Error('Avaliação já enviada ou comanda ainda não elegível');return true;});
-export const serviceReviewState=createServerFn({method:'GET'}).middleware([licensedOperation]).inputValidator(input=>z.object({orderId:z.string().uuid(),token:z.string().uuid()}).parse(input)).handler(async({data})=>{const {supabaseAdmin}=await import('@/integrations/supabase/client.server');const o=await supabaseAdmin.from('orders').select('dining_session_id,delivery_method,status').eq('id',data.orderId).eq('review_token',data.token).maybeSingle();if(!o.data?.dining_session_id||o.data.delivery_method!=='mesa'||o.data.status==='cancelado')return null;const [session,review]=await Promise.all([supabaseAdmin.from('dining_sessions').select('bill_requested_at,closed_at').eq('id',o.data.dining_session_id).single(),supabaseAdmin.from('service_reviews').select('id').eq('session_id',o.data.dining_session_id).maybeSingle()]);return {eligible:!!(session.data?.bill_requested_at||session.data?.closed_at),reviewed:!!review.data};});
+export const saveZone = createServerFn({ method: 'POST' }).middleware([requireSupabaseAuth, licensedOperation])
+  .inputValidator(input => z.object({ id: z.string().optional(), name: z.string().trim().min(2).max(80), fee: z.number().min(0).max(1000), active: z.boolean() }).parse(input))
+  .handler(async ({ data, context }) => {
+    await director(context);
+    const { getDb } = await import('@/lib/firebase-admin');
+    const db = getDb();
+    const { id, ...values } = data;
+    if (id) {
+      await db.collection('delivery_zones').doc(id).set(values, { merge: true });
+    } else {
+      await db.collection('delivery_zones').add(values);
+    }
+    return true;
+  });
+export const savePlan = createServerFn({ method: 'POST' }).middleware([requireSupabaseAuth, licensedOperation])
+  .inputValidator(input => z.object({ id: z.string().optional(), name: z.string(), monthly_price: z.number(), pizza_quota: z.number(), eligible_product_ids: z.array(z.string()), free_delivery: z.boolean(), priority: z.boolean(), active: z.boolean() }).parse(input))
+  .handler(async () => { throw new Error('Clube não disponível nesta versão de demonstração'); });
+
+export const saveContract = createServerFn({ method: 'POST' }).middleware([requireSupabaseAuth, licensedOperation])
+  .inputValidator(input => z.object({ billing_mode: z.enum(['per_subscriber', 'monthly']), percentage: z.number(), monthly_fee: z.number(), agreed: z.boolean() }).parse(input))
+  .handler(async () => { throw new Error('Contrato não disponível nesta versão de demonstração'); });
+
+export const cancelMember = createServerFn({ method: 'POST' }).middleware([requireSupabaseAuth, licensedOperation])
+  .inputValidator(input => z.object({ id: z.string() }).parse(input))
+  .handler(async () => { throw new Error('Clube não disponível nesta versão de demonstração'); });
+
+export const myClub = createServerFn({ method: 'GET' }).middleware([requireSupabaseAuth, licensedOperation])
+  .handler(async () => null);
+
+export const enrollDemoClub = createServerFn({ method: 'POST' }).middleware([requireSupabaseAuth, licensedOperation])
+  .inputValidator(input => z.object({ planId: z.string(), phone: z.string() }).parse(input))
+  .handler(async () => { throw new Error('Clube não disponível nesta versão de demonstração'); });
+export const reviewOrder = createServerFn({ method: 'POST' }).middleware([licensedOperation])
+  .inputValidator(input => z.object({ orderId: z.string(), token: z.string(), dough: z.number().int().min(1).max(5), temperature: z.number().int().min(1).max(5), flavor: z.number().int().min(1).max(5), message: z.string().trim().max(1000) }).parse(input))
+  .handler(async ({ data }) => {
+    const { getDb } = await import('@/lib/firebase-admin');
+    const db = getDb();
+    const orderSnap = await db.collection('orders').doc(data.orderId).get();
+    const order = orderSnap.data();
+    if (!order || order['review_token'] !== data.token) throw new Error('Avaliação já enviada ou pedido ainda não entregue');
+    if (order['status'] !== 'entregue') throw new Error('Avaliação disponível somente após a entrega');
+    const existingSnap = await db.collection('order_reviews').where('order_id', '==', data.orderId).limit(1).get();
+    if (!existingSnap.empty) throw new Error('Avaliação já enviada');
+    await db.collection('order_reviews').add({ order_id: data.orderId, dough: data.dough, temperature: data.temperature, flavor: data.flavor, message: data.message, created_at: new Date().toISOString() });
+    return true;
+  });
+
+export const reviewState = createServerFn({ method: 'GET' }).middleware([licensedOperation])
+  .inputValidator(input => z.object({ orderId: z.string(), token: z.string() }).parse(input))
+  .handler(async ({ data }) => {
+    const { getDb } = await import('@/lib/firebase-admin');
+    const db = getDb();
+    const orderSnap = await db.collection('orders').doc(data.orderId).get();
+    const order = orderSnap.data();
+    if (!order || order['review_token'] !== data.token) return null;
+    const reviewSnap = await db.collection('order_reviews').where('order_id', '==', data.orderId).limit(1).get();
+    const scheduledAt = order['scheduled_at'] ?? null;
+    return { reviewed: !reviewSnap.empty, scheduledAt };
+  });
+
+export const claimPrint = createServerFn({ method: 'POST' }).middleware([requireSupabaseAuth, licensedOperation])
+  .inputValidator(input => z.object({ device: z.string() }).parse(input))
+  .handler(async () => null);
+
+export const finishPrint = createServerFn({ method: 'POST' }).middleware([requireSupabaseAuth, licensedOperation])
+  .inputValidator(input => z.object({ job: z.string(), device: z.string(), success: z.boolean() }).parse(input))
+  .handler(async () => true);
+
+export const requeuePrint = createServerFn({ method: 'POST' }).middleware([requireSupabaseAuth, licensedOperation])
+  .inputValidator(input => z.object({ job: z.string() }).parse(input))
+  .handler(async () => true);
+
+export const reviewService = createServerFn({ method: 'POST' }).middleware([licensedOperation])
+  .inputValidator(input => serviceReviewSchema.parse(input))
+  .handler(async ({ data }) => {
+    const { getDb } = await import('@/lib/firebase-admin');
+    const db = getDb();
+    const orderSnap = await db.collection('orders').doc(data.orderId).get();
+    const order = orderSnap.data();
+    if (!order || order['review_token'] !== data.token || order['delivery_method'] !== 'mesa' || order['status'] === 'cancelado') {
+      throw new Error('Avaliação já enviada ou comanda ainda não elegível');
+    }
+    if (!order['dining_session_id']) throw new Error('Comanda não encontrada');
+    const existingSnap = await db.collection('service_reviews').where('session_id', '==', order['dining_session_id']).limit(1).get();
+    if (!existingSnap.empty) throw new Error('Avaliação já enviada');
+    await db.collection('service_reviews').add({ session_id: order['dining_session_id'], order_id: data.orderId, courtesy: data.courtesy, speed: data.speed, experience: data.experience, message: data.message, created_at: new Date().toISOString() });
+    return true;
+  });
+
+export const serviceReviewState = createServerFn({ method: 'GET' }).middleware([licensedOperation])
+  .inputValidator(input => z.object({ orderId: z.string(), token: z.string() }).parse(input))
+  .handler(async ({ data }) => {
+    const { getDb } = await import('@/lib/firebase-admin');
+    const db = getDb();
+    const orderSnap = await db.collection('orders').doc(data.orderId).get();
+    const order = orderSnap.data();
+    if (!order || order['review_token'] !== data.token || order['delivery_method'] !== 'mesa' || order['status'] === 'cancelado') return null;
+    if (!order['dining_session_id']) return null;
+    const [sessionSnap, reviewSnap] = await Promise.all([
+      db.collection('dining_sessions').doc(order['dining_session_id']).get(),
+      db.collection('service_reviews').where('session_id', '==', order['dining_session_id']).limit(1).get(),
+    ]);
+    const session = sessionSnap.data();
+    return { eligible: !!(session?.['bill_requested_at'] || session?.['closed_at']), reviewed: !reviewSnap.empty };
+  });

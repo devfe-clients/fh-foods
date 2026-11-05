@@ -1,9 +1,10 @@
 import { createMiddleware } from '@tanstack/react-start';
 
-// Handler code is server-only; privileged client is never imported at module scope.
 export const licensedOperation = createMiddleware({ type: 'function' }).server(async ({ next }) => {
-  const { supabaseAdmin } = await import('@/integrations/supabase/client.server');
-  const { data, error } = await supabaseAdmin.rpc('license_allows_operation');
-  if (error || data !== true) throw new Error('Estabelecimento em manutenção');
+  const { getDb } = await import('@/lib/firebase-admin');
+  const db = getDb();
+  const snap = await db.collection('store_license').doc('main').get();
+  const license = snap.data();
+  if (!license || license['mode'] === 'suspended') throw new Error('Estabelecimento em manutenção');
   return next();
 });
