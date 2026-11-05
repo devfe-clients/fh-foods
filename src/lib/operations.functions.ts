@@ -1,9 +1,9 @@
 import { licensedOperation } from './license-middleware';
 import { createServerFn } from '@tanstack/react-start';
-import { requireSupabaseAuth } from '@/integrations/supabase/auth-middleware';
+import { requireFirebaseAuth } from '@/integrations/firebase/auth-middleware';
 import { z } from 'zod';
 import { demandEstimate, platformFee, serviceReviewSchema } from './pizza';
-async function director(context:{supabase:any;userId:string}){const {data,error}=await context.supabase.rpc('has_role',{_user_id:context.userId,_role:'admin'});if(error||!data)throw new Error('Acesso exclusivo da direção');}
+function director(context:{isAdmin:boolean}){if(!context.isAdmin)throw new Error('Acesso exclusivo da direção');}
 export const getOperations = createServerFn({ method: 'GET' }).middleware([licensedOperation]).handler(async () => {
   const { getDb } = await import('@/lib/firebase-admin');
   const db = getDb();
@@ -22,8 +22,8 @@ export const getOperations = createServerFn({ method: 'GET' }).middleware([licen
     wait: demandEstimate(queueCount, settings['demand_mode']),
   };
 });
-export const getOperationsAdmin = createServerFn({ method: 'GET' }).middleware([requireSupabaseAuth, licensedOperation]).handler(async ({ context }) => {
-  await director(context);
+export const getOperationsAdmin = createServerFn({ method: 'GET' }).middleware([requireFirebaseAuth, licensedOperation]).handler(async ({ context }) => {
+  director(context);
   const { getDb } = await import('@/lib/firebase-admin');
   const db = getDb();
   const [settingsSnap, zonesSnap, ordersSnap, serviceReviewsSnap, sessionsSnap] = await Promise.all([
@@ -49,20 +49,20 @@ export const getOperationsAdmin = createServerFn({ method: 'GET' }).middleware([
     fee: 0,
   };
 });
-export const saveOperations = createServerFn({ method: 'POST' }).middleware([requireSupabaseAuth, licensedOperation])
+export const saveOperations = createServerFn({ method: 'POST' }).middleware([requireFirebaseAuth, licensedOperation])
   .inputValidator(input => z.object({ scheduling_enabled: z.boolean(), delivery_zones_enabled: z.boolean(), free_delivery_minimum: z.number().min(0).max(100000), demand_mode: z.enum(['auto', 'normal', 'busy', 'overload']), club_enabled: z.boolean(), auto_print_enabled: z.boolean(), paper_width: z.union([z.literal(58), z.literal(80)]) }).parse(input))
   .handler(async ({ data, context }) => {
-    await director(context);
+    director(context);
     const { getDb } = await import('@/lib/firebase-admin');
     const db = getDb();
     await db.collection('store_settings').doc('main').update(data);
     return true;
   });
 
-export const saveZone = createServerFn({ method: 'POST' }).middleware([requireSupabaseAuth, licensedOperation])
+export const saveZone = createServerFn({ method: 'POST' }).middleware([requireFirebaseAuth, licensedOperation])
   .inputValidator(input => z.object({ id: z.string().optional(), name: z.string().trim().min(2).max(80), fee: z.number().min(0).max(1000), active: z.boolean() }).parse(input))
   .handler(async ({ data, context }) => {
-    await director(context);
+    director(context);
     const { getDb } = await import('@/lib/firebase-admin');
     const db = getDb();
     const { id, ...values } = data;
@@ -73,22 +73,22 @@ export const saveZone = createServerFn({ method: 'POST' }).middleware([requireSu
     }
     return true;
   });
-export const savePlan = createServerFn({ method: 'POST' }).middleware([requireSupabaseAuth, licensedOperation])
+export const savePlan = createServerFn({ method: 'POST' }).middleware([requireFirebaseAuth, licensedOperation])
   .inputValidator(input => z.object({ id: z.string().optional(), name: z.string(), monthly_price: z.number(), pizza_quota: z.number(), eligible_product_ids: z.array(z.string()), free_delivery: z.boolean(), priority: z.boolean(), active: z.boolean() }).parse(input))
   .handler(async () => { throw new Error('Clube não disponível nesta versão de demonstração'); });
 
-export const saveContract = createServerFn({ method: 'POST' }).middleware([requireSupabaseAuth, licensedOperation])
+export const saveContract = createServerFn({ method: 'POST' }).middleware([requireFirebaseAuth, licensedOperation])
   .inputValidator(input => z.object({ billing_mode: z.enum(['per_subscriber', 'monthly']), percentage: z.number(), monthly_fee: z.number(), agreed: z.boolean() }).parse(input))
   .handler(async () => { throw new Error('Contrato não disponível nesta versão de demonstração'); });
 
-export const cancelMember = createServerFn({ method: 'POST' }).middleware([requireSupabaseAuth, licensedOperation])
+export const cancelMember = createServerFn({ method: 'POST' }).middleware([requireFirebaseAuth, licensedOperation])
   .inputValidator(input => z.object({ id: z.string() }).parse(input))
   .handler(async () => { throw new Error('Clube não disponível nesta versão de demonstração'); });
 
-export const myClub = createServerFn({ method: 'GET' }).middleware([requireSupabaseAuth, licensedOperation])
+export const myClub = createServerFn({ method: 'GET' }).middleware([requireFirebaseAuth, licensedOperation])
   .handler(async () => null);
 
-export const enrollDemoClub = createServerFn({ method: 'POST' }).middleware([requireSupabaseAuth, licensedOperation])
+export const enrollDemoClub = createServerFn({ method: 'POST' }).middleware([requireFirebaseAuth, licensedOperation])
   .inputValidator(input => z.object({ planId: z.string(), phone: z.string() }).parse(input))
   .handler(async () => { throw new Error('Clube não disponível nesta versão de demonstração'); });
 export const reviewOrder = createServerFn({ method: 'POST' }).middleware([licensedOperation])
@@ -119,15 +119,15 @@ export const reviewState = createServerFn({ method: 'GET' }).middleware([license
     return { reviewed: !reviewSnap.empty, scheduledAt };
   });
 
-export const claimPrint = createServerFn({ method: 'POST' }).middleware([requireSupabaseAuth, licensedOperation])
+export const claimPrint = createServerFn({ method: 'POST' }).middleware([requireFirebaseAuth, licensedOperation])
   .inputValidator(input => z.object({ device: z.string() }).parse(input))
   .handler(async () => null);
 
-export const finishPrint = createServerFn({ method: 'POST' }).middleware([requireSupabaseAuth, licensedOperation])
+export const finishPrint = createServerFn({ method: 'POST' }).middleware([requireFirebaseAuth, licensedOperation])
   .inputValidator(input => z.object({ job: z.string(), device: z.string(), success: z.boolean() }).parse(input))
   .handler(async () => true);
 
-export const requeuePrint = createServerFn({ method: 'POST' }).middleware([requireSupabaseAuth, licensedOperation])
+export const requeuePrint = createServerFn({ method: 'POST' }).middleware([requireFirebaseAuth, licensedOperation])
   .inputValidator(input => z.object({ job: z.string() }).parse(input))
   .handler(async () => true);
 

@@ -1,5 +1,6 @@
 import { initializeApp, getApps } from "firebase/app";
 import { getAnalytics, isSupported } from "firebase/analytics";
+import { getAuth, GoogleAuthProvider } from "firebase/auth";
 
 const firebaseConfig = {
   apiKey: import.meta.env['VITE_FIREBASE_API_KEY'],
@@ -18,3 +19,6 @@ export const app = !getApps().length ? initializeApp(firebaseConfig) : getApps()
 export const analytics = typeof window !== 'undefined' 
   ? isSupported().then((yes: boolean) => yes ? getAnalytics(app) : null) 
   : null;
+
+export const auth = getAuth(app);
+export const googleProvider = new GoogleAuthProvider();

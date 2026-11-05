@@ -1,5 +1,5 @@
 import { createServerFn } from '@tanstack/react-start';
-import { requireSupabaseAuth } from '@/integrations/supabase/auth-middleware';
+import { requireFirebaseAuth } from '@/integrations/firebase/auth-middleware';
 import { z } from 'zod';
 import { licenseState } from './license-rules';
 
@@ -11,11 +11,8 @@ export const getLicenseStatus = createServerFn({ method: 'GET' }).handler(async 
   return { blocked: !license || license['mode'] === 'suspended' };
 });
 
-export const getBilling = createServerFn({ method: 'GET' }).middleware([requireSupabaseAuth]).handler(async ({ context }) => {
-  const [roleRes] = await Promise.all([
-    context.supabase.rpc('has_role', { _user_id: context.userId, _role: 'admin' }),
-  ]);
-  if (!roleRes.data) throw new Error('Acesso exclusivo da direção');
+export const getBilling = createServerFn({ method: 'GET' }).middleware([requireFirebaseAuth]).handler(async ({ context }) => {
+  if (!context.isAdmin) throw new Error('Acesso exclusivo da direção');
   const { getDb } = await import('@/lib/firebase-admin');
   const db = getDb();
   const snap = await db.collection('store_license').doc('main').get();
@@ -31,11 +28,10 @@ export const getBilling = createServerFn({ method: 'GET' }).middleware([requireS
   };
 });
 
-export const configureLicense = createServerFn({ method: 'POST' }).middleware([requireSupabaseAuth])
+export const configureLicense = createServerFn({ method: 'POST' }).middleware([requireFirebaseAuth])
   .inputValidator(input => z.object({ mode: z.enum(['demonstration', 'active', 'suspended']), dueAt: z.string().datetime().nullable(), price: z.number().positive().max(100000), reason: z.string().trim().min(5).max(500) }).refine(v => v.mode !== 'active' || !!v.dueAt, 'Informe o vencimento').parse(input))
   .handler(async ({ data, context }) => {
-    const roleRes = await context.supabase.rpc('has_role', { _user_id: context.userId, _role: 'admin' });
-    if (!roleRes.data) throw new Error('A licença só pode ser alterada por um operador FH Foods autorizado');
+    if (!context.isAdmin) throw new Error('A licença só pode ser alterada por um operador FH Foods autorizado');
     const { getDb } = await import('@/lib/firebase-admin');
     const db = getDb();
     await db.collection('store_license').doc('main').update({
