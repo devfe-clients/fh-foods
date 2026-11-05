@@ -1,0 +1,7 @@
+{
+  "functions": {
+    "api/_server.js": {
+      "includeFiles": "node_modules/firebase-admin/**,node_modules/@google-cloud/**,node_modules/google-gax/**"
+    }
+  }
+}
