@@ -5,7 +5,6 @@ export default defineConfig({
     server: { entry: "server" },
   },
   nitro: {
-    preset: process.env['VERCEL'] ? 'vercel-node' : 'node-server',
-    // externals removido — vercel-node resolve firebase-admin nativamente
+    preset: process.env['VERCEL'] ? 'vercel' : 'cloudflare-module',
   },
 });
