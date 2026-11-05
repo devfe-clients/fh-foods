@@ -12,13 +12,11 @@ const firebaseConfig = {
   measurementId: import.meta.env['VITE_FIREBASE_MEASUREMENT_ID'],
 };
 
-// Inicializa o Firebase Client de forma segura (evita múltiplas instâncias)
 export const app = !getApps().length ? initializeApp(firebaseConfig) : getApps()[0];
 
-// Analytics só corre no browser com tipagem explícita
 export const analytics = typeof window !== 'undefined' 
   ? isSupported().then((yes: boolean) => yes ? getAnalytics(app) : null) 
   : null;
 
-export const auth = getAuth(app);
+export const auth = typeof window !== 'undefined' ? getAuth(app) : null as any;
 export const googleProvider = new GoogleAuthProvider();
