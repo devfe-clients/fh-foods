@@ -1,0 +1,21 @@
+# Pizzaria
+- [x] Finalização FH Foods: identidade, licença, manutenção e validação de bloqueio no servidor — 72h, bloqueio direto e restauração demonstrativa verificados
+- [x] Guia para Claude: pagamentos Mercado Pago, credenciais, domínio/Cloudflare e limitações de produção
+- [x] Conferência da conta da mesa e encerramento explícito verificados; pré-conta pronta, saída física depende de impressora
+- [x] Avaliações privadas de atendimento e experiência no salão — envio e leitura pela direção verificados
+- [x] Marca FH Foods e identidade configurável por estabelecimento
+- [x] Estimativa de custos e recomendação de assinatura — cenário hipotético, não fatura real
+- [ ] Contratação SaaS e cobrança recorrente FH Foods — implementação Mercado Pago e credenciais pendentes para Claude; edição atual exige ambiente separado por estabelecimento
+- [x] Cardápio editorial, montador, carrinho e checkout de demonstração
+- [x] Gestão, equipe, fidelidade, acompanhamento do pedido
+- [x] Racha-pizza, pizza de sempre, cozinha (KDS), carrinho por link (opcional)
+- [x] WhatsApp por botão, clientes/LTV, recuperação e lucro por pizza
+- [x] Operação física: QR por mesa, comanda, chamada de garçom
+- [x] Verificação autenticada da gestão — áreas Operação, Clube e Avaliações verificadas com a conta solicitante
+- [ ] Troca do banco — aguardando escolha do cliente.
+- [x] Fila de impressão automática, espera dinâmica, regiões/taxas e agendamento; pedido agendado verificado até acompanhamento
+- [x] Avaliações privadas após entrega implementadas com token próprio e leitura exclusiva da direção
+- [x] Clube opcional, planos e remuneração FH Foods mensal ou percentual por assinante; padrão 5%, negociação exclusiva FH Foods
+- [ ] Impressão física — aguarda impressora e configuração silenciosa no computador da cozinha
+- [ ] Cobrança real do clube — aguarda ativação de pagamentos
+- [ ] Domínio e Cloudflare — aguardam domínio, publicação e acesso do proprietário

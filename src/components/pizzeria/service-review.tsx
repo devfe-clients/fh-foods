@@ -1,0 +1,12 @@
+import {useState} from 'react';
+import {useQuery,useMutation} from '@tanstack/react-query';
+import {useServerFn} from '@tanstack/react-start';
+import {Star,Check} from 'lucide-react';
+import {Button} from '@/components/ui/button';
+import {reviewService,serviceReviewState} from '@/lib/operations.functions';
+export function ServiceReview({orderId,token}:{orderId:string;token:string}){
+ const stateFn=useServerFn(serviceReviewState),save=useServerFn(reviewService);const [scores,setScores]=useState({courtesy:0,speed:0,experience:0}),[message,setMessage]=useState('');
+ const state=useQuery({queryKey:['service-review',orderId,token],queryFn:()=>stateFn({data:{orderId,token}}),refetchInterval:8000});const m=useMutation({mutationFn:save,onSuccess:()=>state.refetch()});
+ if(!state.data?.eligible)return null;if(state.data.reviewed||m.isSuccess)return <div className="review-entry"><Check className="text-success"/><h2 className="text-2xl mt-3">Obrigado por avaliar o atendimento.</h2><p className="text-muted-foreground text-sm mt-2">Seu recado foi enviado somente à direção.</p></div>;
+ return <form className="admin-section" onSubmit={e=>{e.preventDefault();m.mutate({data:{orderId,token,...scores,message}});}}><h2>Como foi o atendimento?</h2><p className="text-sm text-muted-foreground">Avaliação privada para a direção da casa.</p>{([['courtesy','Cortesia do garçom'],['speed','Agilidade da equipe'],['experience','Experiência na casa']] as const).map(([key,label])=><fieldset className="review-rating" key={key}><legend>{label}</legend><div className="flex gap-1">{[1,2,3,4,5].map(n=><Button key={n} type="button" variant="ghost" size="icon" aria-label={`${label}: ${n} estrelas`} aria-pressed={scores[key]===n} onClick={()=>setScores({...scores,[key]:n})}><Star className={n<=scores[key]?'fill-current text-primary':'text-muted-foreground'}/></Button>)}</div></fieldset>)}<label className="field">Recado para a direção (opcional)<textarea maxLength={1000} value={message} onChange={e=>setMessage(e.target.value)}/></label>{m.error&&<p className="form-error" role="alert">{m.error.message}</p>}<Button type="submit" className="mt-5" disabled={m.isPending||Object.values(scores).some(n=>n===0)}>{m.isPending?'Enviando…':'Enviar avaliação do atendimento'}</Button></form>;
+}

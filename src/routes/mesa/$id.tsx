@@ -1,0 +1,21 @@
+import {ServiceReview} from '@/components/pizzeria/service-review';
+import {createFileRoute,Link} from '@tanstack/react-router';
+import {useEffect,useState} from 'react';
+import {useQuery,useMutation} from '@tanstack/react-query';
+import {useServerFn} from '@tanstack/react-start';
+import {BellRing,Receipt,ArrowRight} from 'lucide-react';
+import {Header} from '@/components/pizzeria/header';
+import {Footer} from '@/components/pizzeria/footer';
+import {Button} from '@/components/ui/button';
+import {useCart} from '@/components/pizzeria/cart-context';
+import {PeoplePicker} from '@/components/pizzeria/people-picker';
+import {head,money,statusLabel} from '@/lib/pizza';
+import {getTable,callWaiter} from '@/lib/pizzeria.functions';
+import {toast} from 'sonner';
+export const Route=createFileRoute('/mesa/$id')({validateSearch:(s:Record<string,unknown>):{pedido?:string|undefined;avaliacao?:string|undefined}=>({pedido:typeof s['pedido']==='string'?s['pedido']:undefined,avaliacao:typeof s['avaliacao']==='string'?s['avaliacao']:undefined}),head:()=>{const h=head('Sua mesa','Peça pelo cardápio, acompanhe a comanda e chame a equipe.');return {meta:[...h.meta,{name:'robots',content:'noindex'}]};},component:Table});
+function Table(){const {id}=Route.useParams();const {pedido,avaliacao}=Route.useSearch();const {setTable}=useCart();const [people,setPeople]=useState(2);const {data,isPending,refetch}=useQuery({queryKey:['table',id],queryFn:()=>getTable({data:{id}}),refetchInterval:8000});const callFn=useServerFn(callWaiter);const call=useMutation({mutationFn:callFn,onSuccess:()=>{toast.success('A equipe já foi avisada');refetch();},onError:e=>toast.error(e.message)});
+useEffect(()=>{if(data)setTable({id:data.id,label:data.label});},[data?.id,data?.label]);
+if(isPending)return <><Header/><main className="page-body">Encontrando sua mesa…</main></>;
+if(!data)return <><Header/><main className="page-body"><h1 className="page-title">Mesa indisponível.</h1><p className="text-muted-foreground mt-3">Peça ajuda a um atendente.</p></main><Footer/></>;
+const total=data.orders.reduce((n,o)=>n+o.total,0);
+return <><Header/><main className="page-body"><span className="eyebrow text-primary">COMANDA DIGITAL</span><h1 className="page-title mt-3">{data.label}</h1><div className="flex flex-wrap gap-3 mt-8"><Button asChild><Link to="/">Pedir pelo cardápio <ArrowRight/></Link></Button><Button variant="outline" disabled={call.isPending||data.pending.includes('garcom')} onClick={()=>call.mutate({data:{tableId:id,kind:'garcom'}})}><BellRing/>{data.pending.includes('garcom')?'Garçom a caminho':'Chamar garçom'}</Button><Button variant="outline" disabled={call.isPending||data.pending.includes('conta')} onClick={()=>call.mutate({data:{tableId:id,kind:'conta'}})}><Receipt/>{data.pending.includes('conta')?'Conta solicitada':'Pedir a conta'}</Button></div><div className="cart-layout"><div>{data.orders.length?data.orders.map(o=><article className="track-card mt-4" key={o.id}><div className="summary-row"><strong>Pedido #{o.number}</strong><span>{statusLabel(o.status)}</span></div>{o.items.map((i,k)=><p className="text-sm text-muted-foreground mt-2" key={k}>{i.quantity} × {i.name}</p>)}<p className="text-right mt-3">{money(o.total)}</p></article>):<p className="empty-state">Nenhum pedido nesta mesa ainda.</p>}</div><aside className="order-summary"><h3>Conta da mesa</h3><div className="summary-row text-lg"><span>Total</span><span>{money(total)}</span></div><PeoplePicker people={people} setPeople={setPeople} total={total}/><p className="text-xs text-muted-foreground mt-4">O pagamento é feito com a equipe no salão.</p></aside></div>{pedido&&avaliacao&&<ServiceReview orderId={pedido} token={avaliacao}/>}</main><Footer/></>}

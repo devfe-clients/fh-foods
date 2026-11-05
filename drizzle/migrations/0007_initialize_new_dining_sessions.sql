@@ -1,0 +1,4 @@
+CREATE FUNCTION public.initialize_dining_session() RETURNS trigger LANGUAGE plpgsql SECURITY DEFINER SET search_path=public AS $$ DECLARE s uuid; BEGIN INSERT INTO public.dining_sessions(table_id,label,started_at) VALUES(NEW.id,NEW.label,NEW.session_started_at) RETURNING id INTO s; UPDATE public.dining_tables SET current_session_id=s WHERE id=NEW.id; RETURN NEW; END $$;
+CREATE TRIGGER initialize_table_session AFTER INSERT ON public.dining_tables FOR EACH ROW EXECUTE FUNCTION public.initialize_dining_session();
+INSERT INTO public.dining_sessions(table_id,label,started_at) SELECT id,label,session_started_at FROM public.dining_tables WHERE current_session_id IS NULL;
+UPDATE public.dining_tables t SET current_session_id=s.id FROM public.dining_sessions s WHERE s.table_id=t.id AND t.current_session_id IS NULL AND s.closed_at IS NULL;

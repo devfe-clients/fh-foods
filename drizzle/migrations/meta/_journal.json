@@ -1,0 +1,76 @@
+{
+  "version": "7",
+  "dialect": "postgresql",
+  "entries": [
+    {
+      "idx": 0,
+      "version": "7",
+      "when": 1791961254904,
+      "tag": "0000_pizzeria_core",
+      "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "7",
+      "when": 1791961427649,
+      "tag": "0001_catalog_media_permissions",
+      "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1792034909669,
+      "tag": "0002_tracking_loyalty_roles",
+      "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "7",
+      "when": 1792112492941,
+      "tag": "0003_kds_tables_share_ltv",
+      "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1792296560253,
+      "tag": "0004_operations_club_reviews_printing",
+      "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "7",
+      "when": 1793508734459,
+      "tag": "0005_atomic_loyalty_and_print_reconciliation",
+      "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1793598642119,
+      "tag": "0006_fhtech_table_settlement_reviews_brand",
+      "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "7",
+      "when": 1793684538379,
+      "tag": "0007_initialize_new_dining_sessions",
+      "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "7",
+      "when": 1793763704265,
+      "tag": "0008_fhfoods_store_licensing",
+      "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "7",
+      "when": 1793763823163,
+      "tag": "0009_license_control_hardening",
+      "breakpoints": true
+    }
+  ]
+}

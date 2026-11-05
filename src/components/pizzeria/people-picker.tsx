@@ -1,0 +1,4 @@
+import {Users,Minus,Plus} from 'lucide-react';
+import {Button} from '@/components/ui/button';
+import {money,splitBill} from '@/lib/pizza';
+export function PeoplePicker({people,setPeople,total}:{people:number;setPeople:(n:number)=>void;total:number}){return <div className="split-box"><span className="flex items-center gap-2 text-sm"><Users size={16}/>Racha-pizza</span><div className="quantity"><Button type="button" variant="ghost" size="icon" aria-label="Menos pessoas" disabled={people<=1} onClick={()=>setPeople(people-1)}><Minus/></Button><span>{people}</span><Button type="button" variant="ghost" size="icon" aria-label="Mais pessoas" disabled={people>=30} onClick={()=>setPeople(people+1)}><Plus/></Button></div><strong>{people>1?`${money(splitBill(total,people))} por pessoa`:'Uma pessoa'}</strong></div>}
