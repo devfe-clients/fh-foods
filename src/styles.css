@@ -4,20 +4,6 @@
 
 @custom-variant dark (&:is(.dark *));
 
-/*
- * Design system definition.
- *
- * The @theme inline block maps CSS custom properties to Tailwind utility
- * classes (e.g. --color-primary -> bg-primary, text-primary).
- *
- * The :root and .dark blocks define the actual color values using oklch.
- * All colors MUST use oklch format.
- *
- * To add a new semantic color:
- * 1. Add the variable to :root (light value) and .dark (dark value)
- * 2. Register it in @theme inline as --color-<name>: var(--<name>)
- */
-
 @theme inline {
   --radius-sm: calc(var(--radius) - 4px);
   --radius-md: calc(var(--radius) - 2px);
@@ -154,6 +140,29 @@ body {font-family:'DM Sans',sans-serif; letter-spacing:0; margin:0;} h1,h2,h3,p{
 @media(prefers-reduced-motion:reduce){*{scroll-behavior:auto!important;transition:none!important;animation:none!important}}
 @media(min-width:901px){.cinema{height:calc(77svh - 92px);min-height:570px}.cinema-content{padding-top:74px}}
 @media(max-width:600px){.cinema{height:calc(78svh - 70px);min-height:530px}.cinema-content{padding-top:48px}.hero-details{margin-top:20px}.today-special{bottom:28px}}
+
+.active-order-banner {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.5rem 5%;
+  background: color-mix(in oklch, var(--primary) 12%, var(--background));
+  border-bottom: 1px solid var(--border);
+  font-size: 0.8125rem;
+  color: var(--foreground);
+}
+.active-order-link { margin-left: auto; }
+.active-order-close {
+  background: none;
+  border: none;
+  cursor: pointer;
+  padding: 0.2rem;
+  color: var(--muted-foreground);
+  line-height: 1;
+}
+@media (max-width: 600px) {
+  .active-order-banner { padding: 0.5rem 6%; font-size: 0.75rem; }
+}
 
 /* Rounder surfaces */
 :root{--radius:1rem}
