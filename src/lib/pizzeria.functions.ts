@@ -75,6 +75,13 @@ export const placeOrder=createServerFn({method:'POST'}).middleware([licensedOper
   const orderNumber = (countSnap.data().count ?? 0) + 1;
 
   const reviewToken = crypto.randomUUID();
+  const sanitizedLines = lines.map(line => ({
+    ...line,
+    secondId: line.secondId ?? null,
+    drinkId: line.drinkId ?? null,
+    notes: line.notes ?? '',
+  }));
+
   const orderRef = await db.collection('orders').add({
     number: orderNumber,
     customer_name: data.name,
@@ -84,7 +91,7 @@ export const placeOrder=createServerFn({method:'POST'}).middleware([licensedOper
     table_id: data.method === 'mesa' ? (data.tableId ?? null) : null,
     dining_session_id: null,
     people: data.people,
-    items: lines,
+    items: sanitizedLines,
     subtotal,
     total,
     discount,
@@ -126,7 +133,7 @@ export const placeOrder=createServerFn({method:'POST'}).middleware([licensedOper
   };
 });
 export const trackOrder = createServerFn({ method: 'GET' }).middleware([licensedOperation])
-  .inputValidator(input => z.object({ id: z.string().uuid() }).parse(input))
+  .inputValidator(input => z.object({ id: z.string().min(1) }).parse(input))
   .handler(async ({ data }) => {
     const { getDb } = await import('@/lib/firebase-admin');
     const db = getDb();
@@ -197,7 +204,7 @@ export const getSharedCart = createServerFn({ method: 'GET' }).middleware([licen
     } catch { return null; }
   });
 export const getTable = createServerFn({ method: 'GET' }).middleware([licensedOperation])
-  .inputValidator(input => z.object({ id: z.string().uuid() }).parse(input))
+  .inputValidator(input => z.object({ id: z.string().min(1) }).parse(input))
   .handler(async ({ data }) => {
     const catalog = await loadCatalog();
     if (!catalog.settings['dine_in_enabled']) return null;
@@ -238,7 +245,7 @@ export const getTable = createServerFn({ method: 'GET' }).middleware([licensedOp
     };
   });
 export const callWaiter = createServerFn({ method: 'POST' }).middleware([licensedOperation])
-  .inputValidator(input => z.object({ tableId: z.string().uuid(), kind: z.enum(['garcom', 'conta']) }).parse(input))
+  .inputValidator(input => z.object({ tableId: z.string().min(1), kind: z.enum(['garcom', 'conta']) }).parse(input))
   .handler(async ({ data }) => {
     const catalog = await loadCatalog();
     if (!catalog.settings['dine_in_enabled']) throw new Error('Atendimento na mesa desativado');

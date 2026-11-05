@@ -3,7 +3,7 @@ import { settlementSchema } from './pizza';
 import { createServerFn } from '@tanstack/react-start';
 import { requireFirebaseAuth } from '@/integrations/firebase/auth-middleware';
 import { z } from 'zod';
-const productSchema = z.object({ id: z.string().uuid().optional(), name: z.string().trim().min(1).max(100), description: z.string().max(1000), category: z.enum(['Clássicas', 'Autorais', 'Doces', 'Bebidas']), price: z.number().min(0).max(10000), image_key: z.string().max(40), image_url: z.string().max(1000), video_url: z.string().max(1000), cost: z.number().min(0).max(10000).default(0), active: z.boolean(), featured: z.boolean() });
+const productSchema = z.object({ id: z.string().optional(), name: z.string().trim().min(1).max(100), description: z.string().max(1000), category: z.enum(['Clássicas', 'Autorais', 'Doces', 'Bebidas']), price: z.number().min(0).max(10000), image_key: z.string().max(40), image_url: z.string().max(1000), video_url: z.string().max(1000), cost: z.number().min(0).max(10000).default(0), active: z.boolean(), featured: z.boolean() });
 export const getAdmin = createServerFn({ method: 'GET' }).middleware([requireFirebaseAuth, licensedOperation]).handler(async ({ context }) => {
   const isAdmin = context.isAdmin;
   const isStaff = context.isStaff;

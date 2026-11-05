@@ -28,6 +28,7 @@ export function getDb(): Firestore {
   if (!db) {
     getAdminApp();
     db = getFirestore();
+    db.settings({ ignoreUndefinedProperties: true });
   }
   return db;
 }
