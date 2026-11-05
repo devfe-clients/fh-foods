@@ -6,6 +6,8 @@ import { Button } from '@/components/ui/button';
 import { getBilling, configureLicense } from '@/lib/license.functions';
 import { head, money } from '@/lib/pizza';
 import { toast } from 'sonner';
+import { getAuthHeader } from '@/lib/firebase-auth-header';
+import { withAuth } from '@/lib/with-auth';
 export const Route = createFileRoute('/_authenticated/assinatura')({ head: () => head('Assinatura da loja', 'Mensalidade, vencimento e licença do estabelecimento na FH Foods.'), component: Billing });
 const labels = { demonstration: 'Demonstração · sem cobrança', active: 'Ativa', grace: 'Pagamento em atraso · período de tolerância', blocked: 'Operação suspensa' };
 type LicenseRow = { mode: 'demonstration' | 'active' | 'suspended'; monthly_price: number; due_at: string | null; updated_at: string };
@@ -16,8 +18,8 @@ type BillingData = { license: LicenseRow; status: LicenseStatus; invoices: Invoi
 const date = (value: string | null) => value ? new Date(value).toLocaleString('pt-BR') : 'Não definido';
 function Billing() {
   const fetchBilling = useServerFn(getBilling), save = useServerFn(configureLicense), client = useQueryClient();
-  const query = useQuery<BillingData>({ queryKey: ['billing'], queryFn: () => fetchBilling() as unknown as Promise<BillingData>, refetchInterval: 30000, retry: false });
-  const mutation = useMutation({ mutationFn: save, onSuccess: async () => { await client.invalidateQueries(); toast.success('Licença atualizada'); }, onError: e => toast.error(e.message) });
+  const query = useQuery<BillingData>({ queryKey: ['billing'], queryFn: async () => { const headers = await getAuthHeader(); return fetchBilling({ headers }) as unknown as Promise<BillingData>; }, refetchInterval: 30000, retry: false });
+  const mutation = useMutation({ mutationFn: (args: Parameters<typeof save>[0]) => withAuth(h => save({ ...args, headers: h })), onSuccess: async () => { await client.invalidateQueries(); toast.success('Licença atualizada'); }, onError: e => toast.error(e.message) });
   const data = query.data;
   return <main className="page-body"><span className="wordmark">FH FOODS</span><div className="flex flex-wrap gap-3 mt-6"><Button asChild variant="ghost"><Link to="/gestao"><ArrowLeft/>Gestão</Link></Button><Button asChild variant="ghost"><Link to="/auth">Acesso da equipe</Link></Button></div><h1 className="page-title mt-6">Assinatura da loja</h1>{query.isPending ? <p>Consultando assinatura…</p> : query.error ? <p role="alert">{query.error.message}</p> : data && <>
     <div className="border-y py-8"><p className="text-sm text-muted-foreground">Mensalidade</p><strong className="text-4xl block mt-3">{money(Number(data.license.monthly_price))}<span className="text-sm text-muted-foreground"> / mês</span></strong><p className="mt-5 text-primary">{labels[data.status.state]}</p><dl className="mt-6 text-sm space-y-3"><div className="flex flex-wrap gap-3"><dt>Vencimento:</dt><dd>{date(data.license.due_at)}</dd></div><div className="flex flex-wrap gap-3"><dt>Suspensão após 3 dias de atraso:</dt><dd>{date(data.status.blocksAt)}</dd></div></dl></div>
