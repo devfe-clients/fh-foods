@@ -5,9 +5,9 @@ import calabresa from '@/assets/calabresa.jpg';
 export const images: {pepperoni:string;margherita:string;calabresa:string;[key:string]:string} = { pepperoni,margherita,calabresa };
 export const money = (value:number) => new Intl.NumberFormat('pt-BR',{style:'currency',currency:'BRL'}).format(value);
 export const head = (title:string,description:string) => ({meta:[{title:`${title} | FH Foods`},{name:'description',content:description},{property:'og:title',content:`${title} | FH Foods`},{property:'og:description',content:description},{property:'og:type',content:'website'},{name:'twitter:card',content:'summary_large_image'}]});
-export const itemSchema = z.object({productId:z.string().uuid(),secondId:z.string().uuid().optional(),size:z.enum(['Broto','Grande','Família']),crust:z.enum(['Tradicional','Catupiry','Pão de alho']),drinkId:z.string().uuid().optional(),quantity:z.number().int().min(1).max(20),notes:z.string().max(500)});
+export const itemSchema = z.object({productId:z.string().min(1),secondId:z.string().min(1).optional(),size:z.enum(['Broto','Grande','Família']),crust:z.enum(['Tradicional','Catupiry','Pão de alho']),drinkId:z.string().min(1).optional(),quantity:z.number().int().min(1).max(20),notes:z.string().max(500)});
 export type CartItem = z.infer<typeof itemSchema> & {key:string;name:string;image:string;unitPrice:number};
-export const checkoutSchema = z.object({name:z.string().trim().min(3,'Informe seu nome').max(100),phone:z.union([z.string().regex(/^\d{10,11}$/,'Informe um telefone com DDD'),z.literal('')]),address:z.string().trim().max(300),method:z.enum(['retirada','entrega','mesa']),tableId:z.string().uuid().optional(),zoneId:z.string().uuid().optional(),scheduledAt:z.string().datetime().optional(),clubId:z.string().uuid().optional(),clubToken:z.string().uuid().optional(),useClub:z.boolean().default(false),people:z.number().int().min(1).max(30).default(1),coupon:z.string().trim().max(30),redeem:z.boolean().optional(),items:z.array(itemSchema).min(1).max(30)})
+export const checkoutSchema = z.object({name:z.string().trim().min(3,'Informe seu nome').max(100),phone:z.union([z.string().regex(/^\d{10,11}$/,'Informe um telefone com DDD'),z.literal('')]),address:z.string().trim().max(300),method:z.enum(['retirada','entrega','mesa']),tableId:z.string().min(1).optional(),zoneId:z.string().min(1).optional(),scheduledAt:z.string().datetime().optional(),clubId:z.string().min(1).optional(),clubToken:z.string().min(1).optional(),useClub:z.boolean().default(false),people:z.number().int().min(1).max(30).default(1),coupon:z.string().trim().max(30),redeem:z.boolean().optional(),items:z.array(itemSchema).min(1).max(30)})
   .refine(x=>x.method!=='entrega'||x.address.length>=8,{message:'Informe o endereço completo',path:['address']})
   .refine(x=>x.method==='mesa'||x.phone.length>0,{message:'Informe um telefone com DDD',path:['phone']})
   .refine(x=>x.method!=='mesa'||!!x.tableId,{message:'Mesa não identificada',path:['tableId']});
@@ -28,8 +28,8 @@ export function redeemable(points:number,rewardPoints:number,enabled:boolean){re
 
 export const FAVORITE_KEY='fhtech:favorite';
 
-export const serviceReviewSchema=z.object({orderId:z.string().uuid(),token:z.string().uuid(),courtesy:z.number().int().min(1).max(5),speed:z.number().int().min(1).max(5),experience:z.number().int().min(1).max(5),message:z.string().trim().max(1000)});
-export const settlementSchema=z.object({id:z.string().uuid(),sessionId:z.string().uuid(),subtotal:z.number().min(0),servicePercentage:z.number().min(0).max(100),people:z.number().int().min(1).max(30)});
+export const serviceReviewSchema=z.object({orderId:z.string().min(1),token:z.string().min(1),courtesy:z.number().int().min(1).max(5),speed:z.number().int().min(1).max(5),experience:z.number().int().min(1).max(5),message:z.string().trim().max(1000)});
+export const settlementSchema=z.object({id:z.string().min(1),sessionId:z.string().min(1),subtotal:z.number().min(0),servicePercentage:z.number().min(0).max(100),people:z.number().int().min(1).max(30)});
 export function billTotals(subtotal:number,servicePercentage:number){const service=Math.round(subtotal*servicePercentage)/100;return {subtotal,service,total:Math.round((subtotal+service)*100)/100};}
 
 export function demandEstimate(count:number,mode='auto'){const level=mode==='auto'?(count>=8?'overload':count>=4?'busy':'normal'):mode;return level==='overload'?{min:60,max:85,level}:level==='busy'?{min:40,max:60,level}:{min:25,max:40,level:'normal'};}
