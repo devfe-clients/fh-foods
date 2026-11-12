@@ -38,3 +38,45 @@ export function platformFee(prices:number[],mode:string,percentage:number,monthl
 export function scheduleValid(iso:string,opens:string,closes:string,now=new Date()){const at=new Date(iso);const delta=at.getTime()-now.getTime();if(!Number.isFinite(delta)||delta<60*60000||delta>7*86400000)return false;const time=new Intl.DateTimeFormat('pt-BR',{timeZone:'America/Sao_Paulo',hour:'2-digit',minute:'2-digit',hour12:false}).format(at);return withinHours(opens,closes,time);}
 export function kitchenReady(scheduled:string|null,now=Date.now()){return !scheduled||new Date(scheduled).getTime()<=now+35*60000;}
 export function clubCreditValue(lines:{productId:string;secondId?:string|undefined;size:string;quantity:number;unitPrice:number}[],products:{id:string;price:number}[],eligible:string[]){let credits=0,discount=0;for(const line of lines){if(line.size!=='Grande'||!eligible.includes(line.productId)||(line.secondId&&!eligible.includes(line.secondId)))continue;const first=products.find(p=>p.id===line.productId);const second=products.find(p=>p.id===line.secondId);if(!first)continue;credits+=line.quantity;discount+=Math.max(Number(first.price),Number(second?.price??0))*line.quantity;}return {credits,discount:Math.round(discount*100)/100};}
+
+/* ===== Relatórios financeiros (regras puras) ===== */
+export type FinOrder={total:number|string;discount?:number|string;created_at:string;status?:string;is_demo?:boolean;delivery_method?:string;items?:unknown};
+export type FinExpense={amount:number|string;category?:string;spent_on:string};
+const WEEKDAYS=['Domingo','Segunda','Terça','Quarta','Quinta','Sexta','Sábado'];
+export function financeReport(orders:FinOrder[],expenses:FinExpense[],products:{id:string;cost?:number|string}[],period:string){
+  const valid=orders.filter(o=>o.status!=='cancelado');
+  const cur=valid.filter(o=>o.created_at.startsWith(period));
+  const net=cur.reduce((n,o)=>n+Number(o.total),0);
+  const discounts=cur.reduce((n,o)=>n+Number(o.discount??0),0);
+  const gross=net+discounts;
+  const cost=new Map(products.map(p=>[p.id,Number(p.cost??0)]));
+  let cmv=0;const prod:Record<string,{qty:number;revenue:number;margin:number}>={};
+  for(const o of cur){if(!Array.isArray(o.items))continue;for(const raw of o.items){const i=raw as Record<string,unknown>;const q=Number(i['quantity']??0),unit=Number(i['unitPrice']??0),c=(cost.get(String(i['productId']))??0)*q;cmv+=c;const k=String(i['name']??'Item');const r=(prod[k]??={qty:0,revenue:0,margin:0});r.qty+=q;r.revenue+=unit*q;r.margin+=unit*q-c;}}
+  const exp=expenses.filter(e=>e.spent_on.startsWith(period));const opex=exp.reduce((n,e)=>n+Number(e.amount),0);
+  const byCategory:Record<string,number>={};exp.forEach(e=>{const k=e.category||'Outros';byCategory[k]=(byCategory[k]??0)+Number(e.amount);});
+  const profit=net-cmv-opex;
+  const weekday=WEEKDAYS.map(name=>({name,total:0,count:0}));const hours=Array.from({length:24},(_,h)=>({hour:h,total:0,count:0}));const days:Record<string,number>={};const channels:Record<string,number>={};
+  for(const o of cur){const d=new Date(o.created_at);const t=Number(o.total);weekday[d.getDay()]!.total+=t;weekday[d.getDay()]!.count++;hours[d.getHours()]!.total+=t;hours[d.getHours()]!.count++;const day=o.created_at.slice(0,10);days[day]=(days[day]??0)+t;const ch=o.delivery_method||'outro';channels[ch]=(channels[ch]??0)+t;}
+  const months:{month:string;total:number}[]=[];const base=new Date(`${period}-01T12:00:00Z`);for(let i=5;i>=0;i--){const m=new Date(base);m.setUTCMonth(m.getUTCMonth()-i);const key=m.toISOString().slice(0,7);months.push({month:key,total:valid.filter(o=>o.created_at.startsWith(key)).reduce((n,o)=>n+Number(o.total),0)});}
+  const sorted=Object.entries(prod).map(([name,v])=>({name,...v})).sort((a,b)=>b.revenue-a.revenue);const totalRev=sorted.reduce((n,p)=>n+p.revenue,0);let acc=0;
+  const abc=sorted.map(p=>{acc+=p.revenue;const share=totalRev?acc/totalRev:0;return {...p,cls:(share<=0.8||acc===p.revenue?'A':share<=0.95?'B':'C') as 'A'|'B'|'C'};});
+  const prev=months[4]?.total??0;const growth=prev?(net-prev)/prev*100:null;
+  const ticket=cur.length?net/cur.length:0;
+  const dayList=Object.entries(days).sort((a,b)=>b[1]-a[1]);
+  const bestWeekday=[...weekday].sort((a,b)=>b.total-a.total)[0]!;const worstWeekday=[...weekday].filter(w=>w.count).sort((a,b)=>a.total-b.total)[0];
+  const peak=[...hours].sort((a,b)=>b.total-a.total)[0]!;
+  const bestMonth=[...months].sort((a,b)=>b.total-a.total)[0]!;
+  const insights:string[]=[];
+  if(!cur.length)insights.push('Sem vendas no período. Registre pedidos para gerar análises.');
+  else{
+    if(growth!==null)insights.push(growth>=0?`Faturamento ${growth.toFixed(1)}% acima do mês anterior. Mantenha as ações que funcionaram.`:`Faturamento ${Math.abs(growth).toFixed(1)}% abaixo do mês anterior. Considere um cupom de retorno para clientes inativos.`);
+    if(worstWeekday&&worstWeekday.name!==bestWeekday.name)insights.push(`${worstWeekday.name} é o dia mais fraco. Uma promoção exclusiva nesse dia pode equilibrar a semana.`);
+    insights.push(`Pico às ${String(peak.hour).padStart(2,'0')}h: reforce a equipe e a massa pronta nesse horário.`);
+    const gm=net?(net-cmv)/net*100:0;if(cmv>0&&gm<60)insights.push(`Margem bruta de ${gm.toFixed(1)}%: revise custos de insumos ou preços dos itens de menor margem.`);
+    if(gross&&discounts/gross>0.1)insights.push(`Descontos consomem ${(discounts/gross*100).toFixed(1)}% do bruto. Avalie limitar cupons.`);
+    if(net&&opex/net>0.4)insights.push(`Despesas representam ${(opex/net*100).toFixed(1)}% da receita. Revise as maiores categorias de gasto.`);
+    const low=[...sorted].filter(p=>p.revenue>0).sort((a,b)=>a.margin/a.revenue-b.margin/b.revenue)[0];if(low&&cmv>0)insights.push(`${low.name} tem a menor margem do cardápio.`);
+    if(ticket>0)insights.push(`Ticket médio de R$ ${ticket.toFixed(2).replace('.',',')}. Sugira bebida ou borda recheada para aumentá-lo.`);
+  }
+  return {gross,discounts,net,cmv,opex,profit,margin:net?profit/net*100:0,ticket,count:cur.length,growth,byCategory,weekday,hours,months,abc,channels,bestDay:dayList[0]??null,worstDay:dayList[dayList.length-1]??null,bestWeekday,peak,bestMonth,insights};
+}
