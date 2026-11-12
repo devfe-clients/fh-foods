@@ -1,4 +1,9 @@
 # Pizzaria
+- [ ] Exportação para contador em PDF/CSV, taxas, ponto de equilíbrio e engenharia de cardápio
+- [ ] Frente de caixa com pagamento registrado e preços recalculados no servidor
+- [ ] Motoboys: atribuição de entregas e acerto transacional por período
+- [ ] Fichas técnicas e estoque: entradas, consumo atômico e estorno de cancelamentos
+- [ ] Verificação autenticada dos novos fluxos — credenciais Firebase ausentes neste ambiente
 - [x] Finalização FH Foods: identidade, licença, manutenção e validação de bloqueio no servidor — 72h, bloqueio direto e restauração demonstrativa verificados
 - [x] Guia para Claude: pagamentos Mercado Pago, credenciais, domínio/Cloudflare e limitações de produção
 - [x] Conferência da conta da mesa e encerramento explícito verificados; pré-conta pronta, saída física depende de impressora

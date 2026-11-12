@@ -1,0 +1,26 @@
+import { z } from 'zod';
+import { itemSchema } from './pizza';
+
+export const paymentMethods = ['pix', 'credito', 'debito', 'dinheiro', 'voucher'] as const;
+export type PaymentMethod = typeof paymentMethods[number];
+export const paymentLabels: Record<PaymentMethod, string> = { pix: 'Pix', credito: 'Crédito', debito: 'Débito', dinheiro: 'Dinheiro', voucher: 'Vale-refeição' };
+const id = z.string().min(1).max(120).regex(/^[^/]+$/);
+const amount = z.number().finite().min(0).max(1000000);
+export const feeSchema = z.object({ percentage: z.number().min(0).max(100), fixed: amount, days: z.number().int().min(0).max(365) });
+export const financeConfigSchema = z.object({ cnpj: z.string().regex(/^(\d{14})?$/, 'Informe 14 dígitos ou deixe vazio'), fixedCosts: amount, fees: z.object({ pix: feeSchema, credito: feeSchema, debito: feeSchema, dinheiro: feeSchema, voucher: feeSchema }) });
+export type FinanceConfig = z.infer<typeof financeConfigSchema>;
+export const defaultFinanceConfig: FinanceConfig = { cnpj: '', fixedCosts: 0, fees: { pix: { percentage: 0, fixed: 0, days: 0 }, credito: { percentage: 0, fixed: 0, days: 0 }, debito: { percentage: 0, fixed: 0, days: 0 }, dinheiro: { percentage: 0, fixed: 0, days: 0 }, voucher: { percentage: 0, fixed: 0, days: 0 } } };
+export const ingredientSchema = z.object({ id: id.optional(), name: z.string().trim().min(1).max(100), unit: z.enum(['kg', 'g', 'L', 'ml', 'un']), unitCost: amount, minimum: amount });
+export type Ingredient = z.infer<typeof ingredientSchema> & { id: string; stock: number };
+export const stockEntrySchema = z.object({ ingredientId: id, quantity: z.number().finite().positive().max(1000000), reason: z.string().trim().min(3).max(200), requestId: z.string().uuid() });
+export const recipeSchema = z.object({ productId: id, size: z.enum(['Broto', 'Grande', 'Família']), ingredients: z.array(z.object({ ingredientId: id, quantity: z.number().finite().positive().max(1000000) })).min(1).max(30) }).refine(r => new Set(r.ingredients.map(i => i.ingredientId)).size === r.ingredients.length, 'Insumo repetido');
+export type Recipe = z.infer<typeof recipeSchema> & { id: string };
+export const driverSchema = z.object({ id: id.optional(), name: z.string().trim().min(1).max(100), daily: amount, perDelivery: amount, active: z.boolean() });
+export type Driver = z.infer<typeof driverSchema> & { id: string };
+export const posSchema = z.object({ name: z.string().trim().min(3).max(100), phone: z.string().regex(/^\d{0,11}$/), address: z.string().trim().max(300), method: z.enum(['retirada', 'entrega']), paymentMethod: z.enum(paymentMethods), cashReceived: amount, items: z.array(itemSchema).min(1).max(30), requestId: z.string().uuid() }).refine(v => v.method !== 'entrega' || (v.address.length >= 8 && /^\d{10,11}$/.test(v.phone)), 'Entrega exige endereço e telefone com DDD');
+export type CommerceOrder = { id: string; number: number; total: number; discount: number; created_at: string; status: string; is_demo: boolean; delivery_method: string; customer_name: string; payment_method: PaymentMethod | null; payment_status: string; payment_fee: number | null; settlement_at: string | null; items: unknown; inventory_missing: string[]; driver_id: string | null; driver_daily: number; driver_per_delivery: number; driver_settlement_id: string | null; driver_collected: number; inventory_reversed?: boolean };
+export type CommerceExpense = { id: string; description: string; category: string; amount: number; spent_on: string };
+export type Settlement = { id: string; driver_name: string; date: string; count: number; payout: number; collected: number; balance: number };
+export type FinanceData = { orders: CommerceOrder[]; expenses: CommerceExpense[]; products: { id: string; name: string; price: number; cost: number; category: string; active: boolean }[]; config: FinanceConfig; name: string };
+export type OperationsData = { ingredients: Ingredient[]; recipes: Recipe[]; drivers: Driver[]; orders: CommerceOrder[]; settlements: Settlement[] };
+export const reportPeriodSchema = z.object({ period: z.string().regex(/^\d{4}-(0[1-9]|1[0-2])$/), includeDemo: z.boolean().default(false) });
