@@ -2,32 +2,9 @@ import { licensedOperation } from './license-middleware';
 import { createServerFn } from '@tanstack/react-start';
 import { z } from 'zod';
 import { checkoutSchema, itemSchema, itemPrice, withinHours, earnedPoints, redeemable, scheduleValid, deliveryFee, clubCreditValue } from './pizza';
-type Product = Record<string, any> & { id: string; name: string; price: number; active: boolean };
-async function loadCatalog(): Promise<{ products: Product[]; settings: Record<string, any> }> {
-  const { getDb } = await import('@/lib/firebase-admin');
-  const db = getDb();
-  const [productsSnap, settingsSnap] = await Promise.all([
-    db.collection('products').orderBy('sort_order').get(),
-    db.collection('store_settings').doc('main').get(),
-  ]);
-  const settings = settingsSnap.data() as Record<string, any>;
-  if (!settings) throw new Error('Não foi possível carregar o cardápio');
-  const products = productsSnap.docs.map(d => ({ id: d.id, ...d.data() } as Product));
-  return { products, settings };
-}
-/** Recalcula nome e preço de cada item a partir do catálogo do servidor; nunca confia no valor vindo do navegador. */
-function priceLines(products: Product[], items: z.infer<typeof itemSchema>[]) {
-  return items.map(item => {
-    const first = products.find(p => p.id === item.productId);
-    const second = products.find(p => p.id === item.secondId);
-    const drink = products.find(p => p.id === item.drinkId);
-    if (!first) throw new Error('Produto indisponível');
-    if (!first.active || (item.secondId && !second?.active) || (item.drinkId && !drink?.active)) throw new Error('Produto indisponível');
-    return { ...item, name: second ? `${first.name} + ${second.name}` : first.name, unitPrice: itemPrice(Number(first.price), second ? Number(second.price) : undefined, item.size, item.crust, drink ? Number(drink.price) : 0) };
-  });
-}
-export const getCatalog = createServerFn({ method: 'GET' }).middleware([licensedOperation]).handler(async () => loadCatalog());
+export const getCatalog = createServerFn({ method: 'GET' }).middleware([licensedOperation]).handler(async () => { const {loadCatalog}=await import('./catalog.server'); return loadCatalog(); });
 export const placeOrder=createServerFn({method:'POST'}).middleware([licensedOperation]).inputValidator(input=>checkoutSchema.parse(input)).handler(async({data})=>{
+ const {loadCatalog,priceLines}=await import('./catalog.server');
  const catalog = await loadCatalog(), st = catalog.settings as Record<string, any>;
  const now=new Date();const time=new Intl.DateTimeFormat('pt-BR',{timeZone:'America/Sao_Paulo',hour:'2-digit',minute:'2-digit',hour12:false}).format(now);
  if(data.scheduledAt){if(!st['scheduling_enabled']||data.method==='mesa'||!scheduleValid(data.scheduledAt,st['opens_at'],st['closes_at'],now))throw new Error('Escolha um horário de funcionamento, entre uma hora e sete dias a partir de agora');}
@@ -70,43 +47,24 @@ export const placeOrder=createServerFn({method:'POST'}).middleware([licensedOper
 
   const total = Math.round((subtotal - discount + fee) * 100) / 100;
 
-  // Número sequencial simples: conta pedidos existentes + 1
-  const countSnap = await db.collection('orders').count().get();
-  const orderNumber = (countSnap.data().count ?? 0) + 1;
-
-  const reviewToken = crypto.randomUUID();
-  const sanitizedLines = lines.map(line => ({
-    ...line,
-    secondId: line.secondId ?? null,
-    drinkId: line.drinkId ?? null,
-    notes: line.notes ?? '',
-  }));
-
-  const orderRef = await db.collection('orders').add({
-    number: orderNumber,
-    customer_name: data.name,
-    phone: data.phone,
-    address: data.method === 'entrega' ? data.address : '',
-    delivery_method: data.method,
-    table_id: data.method === 'mesa' ? (data.tableId ?? null) : null,
-    dining_session_id: null,
-    people: data.people,
-    items: sanitizedLines,
-    subtotal,
-    total,
-    discount,
-    delivery_fee: fee,
-    delivery_zone: zoneName,
-    is_demo: st['demo_mode'] ?? true,
-    points_earned: 0,
-    points_redeemed: 0,
-    club_credits_used: 0,
-    vip,
-    status: 'recebido',
-    review_token: reviewToken,
-    scheduled_at: data.scheduledAt ?? null,
-    created_at: now.toISOString(),
-    status_updated_at: now.toISOString(),
+  const {prepareInventory}=await import('./inventory.server');
+  const orderRef=db.collection('orders').doc();
+  const reviewToken=crypto.randomUUID();
+  const orderNumber=await db.runTransaction(async tx=>{
+    const counter=db.collection('counters').doc('orders');
+    const seq=await tx.get(counter);
+    const inventory=await prepareInventory(db,tx,lines,st['demo_mode']??true);
+    const number=Number(seq.data()?.['value']??0)+1;
+    tx.set(counter,{value:number});inventory.write();
+    tx.create(orderRef,{
+      number,customer_name:data.name,phone:data.phone,address:data.method==='entrega'?data.address:'',
+      delivery_method:data.method,table_id:data.method==='mesa'?(data.tableId??null):null,dining_session_id:null,people:data.people,
+      items:lines.map((l,i)=>({...l,secondId:l.secondId??null,drinkId:l.drinkId??null,notes:l.notes??'',unitCost:inventory.costs[i]??Number(catalog.products.find(p=>p.id===l.productId)?.['cost']??0)})),
+      subtotal,total,discount,delivery_fee:fee,delivery_zone:zoneName,is_demo:st['demo_mode']??true,
+      points_earned:0,points_redeemed:0,club_credits_used:0,vip,status:'recebido',review_token:reviewToken,
+      scheduled_at:data.scheduledAt??null,created_at:now.toISOString(),status_updated_at:now.toISOString(),
+      inventory_consumption:inventory.demand,inventory_missing:inventory.missing,payment_status:'nao_informado',
+    });return number;
   });
 
   if (data.phone) {
@@ -157,6 +115,7 @@ export const getLoyalty = createServerFn({ method: 'POST' }).middleware([license
 export const saveCheckoutDraft = createServerFn({ method: 'POST' }).middleware([licensedOperation])
   .inputValidator(input => z.object({ name: z.string().trim().max(100), phone: z.string().regex(/^\d{10,11}$/), items: z.array(itemSchema).min(1).max(30) }).parse(input))
   .handler(async ({ data }) => {
+    const {loadCatalog,priceLines}=await import('./catalog.server');
     const catalog = await loadCatalog();
     const lines = priceLines(catalog.products, data.items);
     const total = Math.round(lines.reduce((n, l) => n + l.unitPrice * l.quantity, 0) * 100) / 100;
@@ -175,6 +134,7 @@ export const saveCheckoutDraft = createServerFn({ method: 'POST' }).middleware([
 export const createSharedCart = createServerFn({ method: 'POST' }).middleware([licensedOperation])
   .inputValidator(input => z.object({ items: z.array(itemSchema).min(1).max(30) }).parse(input))
   .handler(async ({ data }) => {
+    const {loadCatalog,priceLines}=await import('./catalog.server');
     const catalog = await loadCatalog();
     if (!catalog.settings['share_cart_enabled']) throw new Error('Compartilhamento de carrinho desativado');
     priceLines(catalog.products, data.items);
@@ -186,6 +146,7 @@ export const createSharedCart = createServerFn({ method: 'POST' }).middleware([l
 export const getSharedCart = createServerFn({ method: 'GET' }).middleware([licensedOperation])
   .inputValidator(input => z.object({ id: z.string() }).parse(input))
   .handler(async ({ data }) => {
+    const {loadCatalog,priceLines}=await import('./catalog.server');
     const catalog = await loadCatalog();
     if (!catalog.settings['share_cart_enabled']) return null;
     const { getDb } = await import('@/lib/firebase-admin');
@@ -206,6 +167,7 @@ export const getSharedCart = createServerFn({ method: 'GET' }).middleware([licen
 export const getTable = createServerFn({ method: 'GET' }).middleware([licensedOperation])
   .inputValidator(input => z.object({ id: z.string().min(1) }).parse(input))
   .handler(async ({ data }) => {
+    const {loadCatalog,priceLines}=await import('./catalog.server');
     const catalog = await loadCatalog();
     if (!catalog.settings['dine_in_enabled']) return null;
     const { getDb } = await import('@/lib/firebase-admin');
@@ -247,6 +209,7 @@ export const getTable = createServerFn({ method: 'GET' }).middleware([licensedOp
 export const callWaiter = createServerFn({ method: 'POST' }).middleware([licensedOperation])
   .inputValidator(input => z.object({ tableId: z.string().min(1), kind: z.enum(['garcom', 'conta']) }).parse(input))
   .handler(async ({ data }) => {
+    const {loadCatalog,priceLines}=await import('./catalog.server');
     const catalog = await loadCatalog();
     if (!catalog.settings['dine_in_enabled']) throw new Error('Atendimento na mesa desativado');
     const { getDb } = await import('@/lib/firebase-admin');

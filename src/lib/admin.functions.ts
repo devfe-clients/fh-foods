@@ -135,7 +135,17 @@ export const updateOrder = createServerFn({ method: 'POST' }).middleware([requir
     if (!context.isAdmin && !context.isStaff) throw new Error('Acesso exclusivo da equipe');
     const { getDb } = await import('@/lib/firebase-admin');
     const db = getDb();
-    await db.collection('orders').doc(data.id).update({ status: data.status, status_updated_at: new Date().toISOString() });
+    await db.runTransaction(async tx=>{
+      const ref=db.collection('orders').doc(data.id),snap=await tx.get(ref),order=snap.data();
+      if(!order)throw new Error('Pedido não encontrado');
+      if(order['status']==='cancelado'&&data.status!=='cancelado')throw new Error('Pedido cancelado não pode ser reaberto; crie um novo pedido');
+      if(order['driver_settlement_id']&&data.status==='cancelado')throw new Error('Entrega já acertada; solicite ajuste à direção');
+      const restore=data.status==='cancelado'&&!order['inventory_reversed']&&!order['is_demo'];
+      const stock:Record<string,number>={};
+      if(restore)for(const key of Object.keys(order['inventory_consumption']??{})){const i=await tx.get(db.collection('ingredients').doc(key));if(!i.exists)throw new Error('Insumo não encontrado para estorno');stock[key]=Number(i.data()?.['stock']??0);}
+      if(restore)for(const [key,q] of Object.entries(order['inventory_consumption']??{}))tx.update(db.collection('ingredients').doc(key),{stock:Math.round(((stock[key]??0)+Number(q))*1000000)/1000000});
+      tx.update(ref,{status:data.status,status_updated_at:new Date().toISOString(),...(restore?{inventory_reversed:true}:{}),...(data.status==='cancelado'&&order['payment_status']==='pago'?{payment_status:'estorno_pendente'}:{})});
+    });
     return true;
   });
 
